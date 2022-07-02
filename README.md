@@ -1,2 +1,3 @@
 # postgres
-краткий tutorial для работы с postgres в Go
+
+Краткий tutorial для работы с postgres в Go.
