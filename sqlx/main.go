@@ -1,8 +1,6 @@
 package main
 
 import (
-	// https://go.dev/src/database/sql/doc.txt
-
 	"context"
 	"database/sql"
 	"errors"

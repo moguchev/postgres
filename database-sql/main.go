@@ -12,6 +12,7 @@ import (
 
 	// database/sql — это набор интерфейсов для работы с базой
 	// Чтобы эти интерфейсы работали, для них нужна реализация. Именно за реализацию и отвечают драйверы.
+
 	_ "github.com/lib/pq" // импортируем драйвер для postgres
 	// Обратите внимание, что мы загружаем драйвер анонимно, присвоив его квалификатору пакета псевдоним, _ ,
 	// чтобы ни одно из его экспортированных имен не было видно нашему коду.
@@ -19,7 +20,6 @@ import (
 )
 
 const (
-
 	// название регистрируемоего драйвера github.com/lib/pq
 	stdPostgresDriverName = "postgres"
 	/*
@@ -48,7 +48,6 @@ const (
 )
 
 func main() {
-
 	// connection string
 	psqlConn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
 
@@ -100,6 +99,7 @@ func main() {
 	/* примеры работы c БД c контекстом */
 	// Совет: используйте запросы с контекстом
 	ctx := context.Background()
+
 	exampleQueryRowContext(ctx, db)
 	exampleQueryContext(ctx, db)
 	exampleExecContext(ctx, db)
@@ -127,8 +127,12 @@ func exampleQueryRow(db *sql.DB) {
 
 	// Ex. 2
 	var studentID int64
-	row = db.QueryRow("SELECT id FROM students WHERE age > 10000") // такого "долгожителя" в нашей таблице может не быть
-	if err := row.Scan(&studentID); err != nil {                   // мы тут получим ошубку, так как нам ничего не вернулось из БД
+	row = db.QueryRow("SELECT id FROM students WHERE age = 10000") // такого "долгожителя" в нашей таблице может не быть
+	if errors.Is(row.Err(), sql.ErrNoRows) {
+		fmt.Println("Не найден в БД студент с age > 10000")
+	}
+
+	if err := row.Scan(&studentID); err != nil { // мы тут получим ошубку, так как нам ничего не вернулось из БД
 		fmt.Println("db.QueryRow.Scan():", err) // нам вернется ошибка sql.ErrNoRows
 		if errors.Is(err, sql.ErrNoRows) {      // при использовании QueryRow не забывайте обрабатывать ошибку на sql.ErrNoRows, так как отстуствие результата может быть стандартным кейсом
 			fmt.Println("Не найден в БД студент с age > 10000")
@@ -262,8 +266,8 @@ func exampleExecContext(ctx context.Context, db *sql.DB) {
 func exampleTransaction(ctx context.Context, db *sql.DB) {
 	// создаем транзакцию
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{
-		Isolation: sql.LevelRepeatableRead, // указываем в опциях уровень изоляции
-		ReadOnly:  false,                   // можем указать, что транзакции только для чтения
+		Isolation: sql.LevelSerializable, // указываем в опциях уровень изоляции
+		ReadOnly:  false,                 // можем указать, что транзакции только для чтения
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -275,7 +279,7 @@ func exampleTransaction(ctx context.Context, db *sql.DB) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	rows.Close()
+	defer rows.Close()
 
 	_, err = tx.ExecContext(ctx, "SELECT 1")
 	if err != nil {
@@ -353,23 +357,38 @@ func exampleWithNullableFields(ctx context.Context, db *sql.DB) {
 }
 
 type MyCustomType struct {
-	Valid  bool
 	Number int
+	Valid  bool
 }
 
 // Scan implements the Scanner interface.
-func (n *MyCustomType) Scan(value interface{}) error {
-	if value == nil {
+func (n *MyCustomType) Scan(src interface{}) error {
+	// The src value will be of one of the following types:
+	//
+	//    int64
+	//    float64
+	//    bool
+	//    []byte
+	//    string
+	//    time.Time
+	//    nil - for NULL values
+	if src == nil {
 		n.Number, n.Valid = 0, false
 		return nil
 	}
 	n.Valid = true
 
 	// some fantastic logic here
-	fmt.Printf("%#v\n", value)
+	switch src := src.(type) {
+	case int64:
+		n.Number = int(src)
+	case bool:
+		n.Number = 1
+	default:
+		return fmt.Errorf("can't scan %#v into MyCustomType", src)
+	}
 
 	return nil
-
 }
 
 var _ sql.Scanner = (*MyCustomType)(nil) // наш тип MyCustomType удовлетовряет интерфейсу sql.Scanner
