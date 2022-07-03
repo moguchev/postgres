@@ -5,4 +5,4 @@ up-db:
 
 .PHONY: down-db
 down-db:
-	docker-compose down postgres
+	docker-compose down
