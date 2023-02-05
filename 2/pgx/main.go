@@ -4,10 +4,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
-	"github.com/georgysavva/scany/pgxscan"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/log/zapadapter" // adapter for go.uber.org/zap loggger
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -68,10 +66,12 @@ func main() {
 		logger.Fatal(err)
 	}
 
-	// *pgx.Conn.Exec(...) like *sql.DB.ExexContext(...)
-	// *pgx.Conn.Query(...) like *sql.DB.QueryContext(...)
-	// *pgx.Conn.QueryRow(...) like *sql.DB.QueryRowContext(...)
-	// *pgx.Conn.BeginTx(...) like *sql.DB.BeginTx(...)
+	// pgx.Conn - ОДНО соединение с БД
+
+	// *pgx.Conn.Exec(...) аналог *sql.DB.ExexContext(...)
+	// *pgx.Conn.Query(...) аналог *sql.DB.QueryContext(...)
+	// *pgx.Conn.QueryRow(...) аналог *sql.DB.QueryRowContext(...)
+	// *pgx.Conn.BeginTx(...) аналог *sql.DB.BeginTx(...)
 
 	// New:
 	// *pgx.Conn.QueryFunc()
@@ -79,7 +79,17 @@ func main() {
 
 	fmt.Println("Connection with database successfully established!")
 
-	// pgxpool - пул соединений с БД
+	// pgx.Pool - пул соединений с БД
+
+	// *pgx.Pool.Exec(...) аналог *sql.DB.ExexContext(...)
+	// *pgx.Pool.Query(...) аналог *sql.DB.QueryContext(...)
+	// *pgx.Pool.QueryRow(...) аналог *sql.DB.QueryRowContext(...)
+	// *pgx.Pool.BeginTx(...) аналог *sql.DB.BeginTx(...)
+
+	// New:
+	// *pgx.Pool.QueryFunc(...)
+	// *pgx.Pool.SendBatch(...) // Send several queries at once (example: https://github.com/jackc/pgx/blob/master/batch_test.go)
+	// *pgx.Pool.CopyFrom(...) // PostgreSQL COPY operator (example: https://github.com/jackc/pgx/blob/master/copy_from_test.go)
 
 	pool, err := pgxpool.Connect(ctx, psqlConn)
 	if err != nil {
@@ -97,7 +107,12 @@ func main() {
 	config.ConnConfig.Logger = zapadapter.NewLogger(zapLogger) // передаем наш zap логгер
 	config.ConnConfig.LogLevel = pgx.LogLevelDebug             // уровень логирования выставляем
 
-	exampleSelect(ctx, pool)
+	// pgx
+	exampleQuery(ctx, pool)
+	// pgx + scany
+	exampleScanySelect(ctx, pool)
+	exampleScanyQueryV1(ctx, pool)
+	exampleScanyQueryV2(ctx, pool)
 
 	// github.com/jackc/pgx/v4/stdlib - для совместимости с database/sql (теряем все преимущества pgx)
 
@@ -106,54 +121,8 @@ func main() {
 	// github.com/jackc/pgerrcode -  коды ошибок postgres
 
 	// github.com/vgarvardt/pgx-google-uuid - поддержка github.com/google/uuid.
-}
 
-func exampleSelect(ctx context.Context, pool *pgxpool.Pool) {
-	// github.com/georgysavva/scany - Библиотека для сканирования данных из базы данных в структуры  (like sqlx)
-
-	type Student struct {
-		FirstName  string `db:"first_name"`
-		LastName   string `db:"last_name"`
-		Age        uint   `db:"age"`
-		OtherField string `db:"-"`
-	}
-	const query = `SELECT first_name, last_name, age FROM students`
-
-	// Ex. 1
-	var students []Student
-	if err := pgxscan.Select(ctx, pool, &students, query); err != nil {
-		log.Fatal(err)
-	}
-	log.Println(students)
-
-	// Ex. 2
-	rows, err := pool.Query(ctx, query)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
-
-	// Ex. 2.1
-	students = students[:0]
-	if err := pgxscan.ScanAll(&students, rows); err != nil {
-		log.Fatal(err)
-	}
-	log.Println(students)
-
-	// Ex. 2.2
-	students = students[:0]
-
-	rs := pgxscan.NewRowScanner(rows)
-	for rows.Next() {
-		var st Student
-		if err := rs.Scan(&st); err != nil {
-			log.Fatal(err)
-		}
-		// do something here
-	}
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
-	}
+	// github.com/georgysavva/scany - Библиотека для сканирования данных из базы данных в структуры  (аля sqlx)
 
 	// see more examples: https://github.com/georgysavva/scany/blob/master/pgxscan/example_test.go
 }
